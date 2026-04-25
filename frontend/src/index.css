@@ -1,0 +1,27 @@
+:root {
+  --bg-color: #020617;
+  --text-color: #f8fafc;
+  --primary: #0ea5e9;
+  --primary-glow: rgba(14, 165, 233, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none; /* Evita seleção de texto no PWA */
+  -webkit-tap-highlight-color: transparent; /* Remove brilho ao tocar no iOS */
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: fixed; /* Evita o "bounce" do iOS no Safari */
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: 'Inter', sans-serif;
+}

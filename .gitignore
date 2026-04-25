@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Jarvis specific
+public/response_*.mp3
+backend/public/*.mp3
+
+# OS
+.DS_Store
+thumbs.db
