@@ -122,3 +122,7 @@ yarl==1.23.0
 zorin-appearance==5.3
 zorin-connect==1.2
 zorin-exec-guard==1.5
+prometheus-fastapi-instrumentator
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi

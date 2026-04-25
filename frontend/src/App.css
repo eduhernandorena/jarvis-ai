@@ -297,14 +297,26 @@ body {
   animation: pulseRed 2s infinite;
 }
 
-.stop-speech-btn:hover {
-  background: #ff4b2b;
-  color: white;
-  box-shadow: 0 0 15px rgba(255, 75, 43, 0.5);
+.system-monitor-hud {
+  position: fixed;
+  top: 10px;
+  right: 20px;
+  display: flex;
+  gap: 20px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.6rem;
+  color: var(--primary);
+  opacity: 0.6;
+  z-index: 1000;
+  letter-spacing: 1px;
 }
 
-@keyframes pulseRed {
-  0% { box-shadow: 0 0 0 0 rgba(255, 75, 43, 0.4); }
-  70% { box-shadow: 0 0 0 10px rgba(255, 75, 43, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(255, 75, 43, 0); }
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.stat-item.uptime {
+  color: #888;
 }

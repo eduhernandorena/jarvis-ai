@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { JarvisOrb } from './components/JarvisOrb';
+import { SystemMonitor } from './components/SystemMonitor';
 import { useSpeech } from './hooks/useSpeech';
 import { useJarvisAudio } from './hooks/useJarvisAudio';
 
@@ -158,6 +159,7 @@ function App() {
 
   return (
     <div className="app-container" data-personality={personality}>
+      <SystemMonitor backendUrl={BACKEND_URL} />
       <header className="app-header">
         <h1>{personality.toUpperCase()} AI</h1>
         <div className="personality-selector">

@@ -18,6 +18,9 @@ Um assistente virtual híbrido de próxima geração inspirado no **J.A.R.V.I.S.
 - 🏠 **Automação Alexa**: Disparo de rotinas da Alexa via webhooks (Voice Monkey).
 - 📝 **Memória Persistente**: Sistema inteligente que extrai e lembra fatos sobre o usuário para conversas contextualizadas.
 - 📡 **NDJSON Streaming**: Respostas de texto e áudio transmitidas em tempo real para latência ultra-baixa.
+- 📊 **Monitoramento HUD**: Painel de telemetria em tempo real (CPU, RAM, Disco) integrado na interface.
+- 🕵️ **Rastreabilidade**: Sistema de logs estruturados e tracing via OpenTelemetry.
+- 🎙️ **Alexa Skill**: Endpoint nativo para integrar o Jarvis como uma Skill da Alexa.
 - 📱 **PWA & Mobile Ready**: Interface responsiva com suporte a PWA e Capacitor para uso nativo em iOS/Android.
 
 ## 🛠️ Stack Tecnológica
@@ -28,6 +31,7 @@ Um assistente virtual híbrido de próxima geração inspirado no **J.A.R.V.I.S.
 - **Voz**: Edge-TTS (Microsoft Azure Neural Voices)
 - **Busca**: DuckDuckGo Search API
 - **Banco de Dados**: JSON-based Smart Memory
+- **Monitoramento**: psutil, Prometheus & OpenTelemetry
 
 ### Frontend
 - **Framework**: React 19 + Vite

@@ -1,0 +1,61 @@
+.system_monitor-hud {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  width: 200px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  padding: 15px;
+  border-radius: 10px;
+  color: #fff;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.7rem;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.monitor-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.monitor-item label {
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 1px;
+}
+
+.bar-container {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  transition: width 0.5s ease-in-out, background-color 0.5s ease;
+  box-shadow: 0 0 10px var(--accent-color);
+}
+
+.monitor-item span {
+  align-self: flex-end;
+  font-weight: bold;
+}
+
+.uptime {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 5px;
+  font-size: 0.5rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Personality colors override */
+[data-personality="jarvis"] { --accent-color: #00d4ff; --alert-color: #ff4b2b; }
+[data-personality="friday"] { --accent-color: #ff0055; --alert-color: #ffcc00; }
+[data-personality="karen"] { --accent-color: #00ff88; --alert-color: #ff00ff; }

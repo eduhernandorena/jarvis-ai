@@ -20,12 +20,20 @@ import uuid
 import re
 from fastapi.responses import StreamingResponse
 import json
+import psutil
+import logging
+from prometheus_fastapi_instrumentator import Instrumentator
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 # ========== Configurações de IA ==========
 GROQ_MODEL = "llama-3.3-70b-versatile"
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi3")
 GROQ_FAST_MODEL = "llama-3.1-8b-instant"
+GROQ_VISION_MODEL = "llama-3.2-11b-vision-preview"
 
 
 # ========== Configurações de Depuração ==========
@@ -150,6 +158,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ========== Monitoramento e Telemetria ==========
+
+# Configuração de Logging para Rastreabilidade
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler("jarvis.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("jarvis")
+
+# Prometheus Telemetria
+Instrumentator().instrument(app).expose(app)
+
+# OpenTelemetry Traceability (Console por enquanto para debug)
+provider = TracerProvider()
+processor = BatchSpanProcessor(ConsoleSpanExporter())
+provider.add_span_processor(processor)
+trace.set_tracer_provider(provider)
+FastAPIInstrumentor.instrument_app(app)
+
+@app.get("/api/stats")
+async def get_system_stats():
+    """Retorna estatísticas de uso do sistema para o monitor de recursos."""
+    return {
+        "cpu_usage": psutil.cpu_percent(interval=1),
+        "ram_usage": psutil.virtual_memory().percent,
+        "disk_usage": psutil.disk_usage('/').percent,
+        "uptime": datetime.now().strftime("%Y-%m-%d %H:%M:%S") # Placeholder simplificado
+    }
+
 class ChatRequest(BaseModel):
     message: str
     image: Optional[str] = None
@@ -187,15 +228,57 @@ async def generate_speech(text: str, personality: str = "jarvis") -> str:
     return b64
 
 
+async def get_ai_response(message: str, personality: str = "jarvis", image: Optional[str] = None):
+    """Lógica central para obter resposta da IA (Groq ou Ollama)."""
+    api_key = os.getenv("GROQ_API_KEY", "")
+    client_groq = AsyncGroq(api_key=api_key) if api_key else None
+    
+    search_results = ""
+    if client_groq:
+        try:
+            check_res = await client_groq.chat.completions.create(
+                model=GROQ_FAST_MODEL,
+                messages=[{"role": "user", "content": f"O usuário perguntou: '{message}'. Ele quer saber de fatos, notícias, clima ou algo que mude com o tempo (hoje, agora, notícias)? Responda APENAS 'Sim' ou 'Não'."}],
+                max_tokens=5, temperature=0
+            )
+            if "sim" in check_res.choices[0].message.content.lower():
+                search_results = await search_web(message)
+        except Exception as e:
+            print(f"Erro na pré-busca: {e}")
+
+    if client_groq:
+        model = GROQ_VISION_MODEL if image else GROQ_MODEL
+        memory = get_memory()
+        memory_str = f"\nO que você sabe sobre o usuário: {json.dumps(memory)}" if memory else ""
+        search_str = f"\nRESULTADOS DA WEB: {search_results}" if search_results else ""
+        p_prompt = AGENT_INSTRUCTIONS + f"\nVOCÊ ESTÁ OPERANDO COMO: {personality.upper()}"
+        
+        messages = [
+            {"role": "system", "content": p_prompt + f"\nContexto Atual: {datetime.now().strftime('%d/%m/%Y %H:%M')}" + memory_str + search_str},
+            {"role": "user", "content": [{"type": "text", "text": message}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image}"}}] if image else message}
+        ]
+
+        res = await client_groq.chat.completions.create(
+            model=model, messages=messages, max_tokens=300, temperature=0.5
+        )
+        full_text = res.choices[0].message.content
+        asyncio.create_task(update_memory_task(message, full_text))
+        return full_text
+    else:
+        # Fallback Ollama
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(f"{OLLAMA_URL}/api/chat", json={
+                "model": OLLAMA_MODEL,
+                "messages": [{"role": "user", "content": message}],
+                "stream": False
+            })
+            return resp.json().get("message", {}).get("content", "")
+
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     
-    async def process_full_response(stream_gen):
-        full_text = ""
-        async for text in stream_gen:
-            if text: full_text += text
-        
-        # 1. Comandos Alexa (uma única verificação no texto todo)
+    async def process_full_response(full_text):
+        # 1. Comandos Alexa
         alexa_match = re.search(r'\[ALEXA:\s*([^\]]+)\]', full_text)
         if alexa_match:
             comando = alexa_match.group(1).strip()
@@ -205,109 +288,23 @@ async def chat_endpoint(request: ChatRequest):
         # 2. Envia o TEXTO COMPLETO primeiro
         yield json.dumps({"text": full_text, "audio": ""}) + "\n"
 
-        # 3. Gera o áudio completo (dividindo por sentenças apenas para o TTS não engasgar)
+        # 3. Gera o áudio completo
         frases = re.split(r'(?<=[.!?])\s+', full_text)
         for frase in frases:
             if frase.strip():
                 audio_b64 = await generate_speech(frase.strip(), request.personality)
                 yield json.dumps({"text": "", "audio": audio_b64}) + "\n"
 
-
-
-
-
     async def generate_responses():
-        api_key = os.getenv("GROQ_API_KEY", "")
-        client_groq = AsyncGroq(api_key=api_key) if api_key else None
-        
-        # 1. Decidir se precisa de pesquisa (usando modelo rápido)
-        needs_search = False
-        search_results = ""
-        
         try:
-            p_config = PERSONALITIES.get(request.personality, PERSONALITIES["jarvis"])
-            
-            if client_groq:
-                # Perguntar ao modelo rápido se precisa de busca (Prompt reforçado)
-                check_res = await client_groq.chat.completions.create(
-                    model=GROQ_FAST_MODEL,
-                    messages=[{"role": "user", "content": f"O usuário perguntou: '{request.message}'. Ele quer saber de fatos, notícias, clima ou algo que mude com o tempo (hoje, agora, notícias)? Responda APENAS 'Sim' ou 'Não'."}],
-                    max_tokens=5, temperature=0
-                )
-                if "sim" in check_res.choices[0].message.content.lower():
-                    needs_search = True
-                    search_results = await search_web(request.message)
-
-
-            async def groq_gen():
-                model = GROQ_VISION_MODEL if request.image else GROQ_MODEL
-                
-                memory = get_memory()
-                memory_str = f"\nO que você sabe sobre o usuário: {json.dumps(memory)}" if memory else ""
-                search_str = f"\nRESULTADOS DA WEB (Use isso para responder se disponível): {search_results}" if search_results else ""
-                
-                # APLICANDO AS INSTRUÇÕES DO AGENTE BASE
-                p_prompt = AGENT_INSTRUCTIONS + f"\nVOCÊ ESTÁ OPERANDO COMO: {request.personality.upper()}"
-                
-                messages = [
-                    {"role": "system", "content": p_prompt + f"\nContexto Atual: {datetime.now().strftime('%d/%m/%Y %H:%M')}" + memory_str + search_str}
-                ]
-
-
-
-
-
-
-
-                
-                if request.image:
-                    messages.append({
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": request.message},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{request.image}"}}
-                        ]
-                    })
-                else:
-                    messages.append({"role": "user", "content": request.message})
-
-                log_debug("AI PROMPT", messages)
-                full_response = ""
-                stream = await client_groq.chat.completions.create(
-                    model=model, messages=messages, stream=True, max_tokens=300, temperature=0.5
-                )
-                async for chunk in stream:
-                    delta = chunk.choices[0].delta.content or ""
-                    full_response += delta
-                    yield delta
-                
-                log_debug("AI RESPONSE", full_response)
-                asyncio.create_task(update_memory_task(request.message, full_response))
-
-            if client_groq:
-                async for chunk in process_full_response(groq_gen()):
-                    yield chunk
-            else:
-                async def ollama_gen():
-                    async with httpx.AsyncClient(timeout=120.0) as client:
-                        async with client.stream("POST", f"{OLLAMA_URL}/api/chat", json={
-                            "model": OLLAMA_MODEL,
-                            "messages": [{"role": "user", "content": request.message}],
-                            "stream": True
-                        }) as resp:
-                            async for line in resp.aiter_lines():
-                                if line:
-                                    try: yield json.loads(line).get("message", {}).get("content", "")
-                                    except: pass
-                
-                async for chunk in process_full_response(ollama_gen()):
-                    yield chunk
-
-                
+            full_text = await get_ai_response(request.message, request.personality, request.image)
+            async for chunk in process_full_response(full_text):
+                yield chunk
         except Exception as e:
-            print(f"Erro no streaming: {e}")
-            erro_msg = "Falha no processamento da resposta."
-            yield json.dumps({"text": erro_msg, "audio": ""}) + "\n"
+            print(f"Erro no chat: {e}")
+            yield json.dumps({"text": "Erro no processamento.", "audio": ""}) + "\n"
+
+    return StreamingResponse(generate_responses(), media_type="application/x-ndjson")
 
     return StreamingResponse(generate_responses(), media_type="application/x-ndjson")
 
@@ -360,6 +357,45 @@ async def get_alerts():
 
 
 
+
+# ========== Integração Alexa (Skill Endpoint) ==========
+
+@app.post("/api/alexa/skill")
+async def alexa_skill(request: dict):
+    """
+    Endpoint para integração com Amazon Alexa Skill.
+    Recebe requisições de Intent e responde usando o cérebro Jarvis.
+    """
+    try:
+        req_type = request.get("request", {}).get("type")
+        
+        if req_type == "LaunchRequest":
+            speech = "Jarvis online. Como posso ajudar, senhor?"
+        elif req_type == "IntentRequest":
+            intent_name = request["request"]["intent"]["name"]
+            
+            if intent_name == "AskJarvisIntent":
+                user_msg = request["request"]["intent"]["slots"]["question"]["value"]
+                # Chama a IA de forma síncrona (esperando o texto completo)
+                speech = await get_ai_response(user_msg, "jarvis")
+            else:
+                speech = "Desculpe, não conheço esse comando."
+        else:
+            speech = "Sistema Jarvis em modo de espera."
+
+        return {
+            "version": "1.0",
+            "response": {
+                "outputSpeech": {
+                    "type": "PlainText",
+                    "text": speech
+                },
+                "shouldEndSession": True
+            }
+        }
+    except Exception as e:
+        print(f"Erro Alexa Skill: {e}")
+        return {"version": "1.0", "response": {"outputSpeech": {"type": "PlainText", "text": "Houve um erro no meu núcleo de processamento."}}}
 
 # Para servir os arquivos de áudio
 
