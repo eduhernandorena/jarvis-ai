@@ -410,3 +410,8 @@ else:
     @app.get("/")
     def read_root():
         return {"status": "Frontend not built yet. Run 'npm run build' in frontend."}
+
+if __name__ == "__main__":
+    import uvicorn
+    # Inicia o servidor na porta 8000
+    uvicorn.run(app, host="0.0.0.0", port=8000)
